@@ -1,0 +1,23 @@
+{
+  "name": "example-wait-on",
+  "version": "1.0.0",
+  "description": "e2e tests for wait-on feature",
+  "main": "index.js",
+  "scripts": {
+    "test": "cypress run",
+    "start": "node .",
+    "start2": "node ./index2",
+    "start3": "node ./index3",
+    "start4": "node ./index4"
+  },
+  "author": "",
+  "license": "ISC",
+  "private": true,
+  "devDependencies": {
+    "cypress": "5.2.0"
+  },
+  "dependencies": {
+    "arg": "5.0.0",
+    "debug": "4.2.0"
+  }
+}

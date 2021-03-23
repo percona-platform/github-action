@@ -5,38 +5,13 @@ const exec = require('@actions/exec')
 const io = require('@actions/io')
 const { Octokit } = require('@octokit/core')
 const hasha = require('hasha')
-const got = require('got')
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const quote = require('quote')
 const cliParser = require('argument-vector')()
 const findYarnWorkspaceRoot = require('find-yarn-workspace-root')
-
-/**
- * A small utility for checking when an URL responds, kind of
- * a poor man's https://www.npmjs.com/package/wait-on
- */
-const ping = (url, timeout) => {
-  const start = +new Date()
-  return got(url, {
-    retry: {
-      retries(retry, error) {
-        const now = +new Date()
-        core.debug(
-          `${now - start}ms ${error.method} ${error.host} ${
-            error.code
-          }`
-        )
-        if (now - start > timeout) {
-          console.error('%s timed out', url)
-          return 0
-        }
-        return 1000
-      }
-    }
-  })
-}
+const { ping } = require('./src/ping')
 
 /**
  * Parses input command, finds the tool and
@@ -49,20 +24,20 @@ const execCommand = (
 ) => {
   const cwd = cypressCommandOptions.cwd
 
-  console.log('%s with command "%s"', label, fullCommand)
+  console.log('%s command "%s"', label, fullCommand)
   console.log('current working directory "%s"', cwd)
 
   const args = cliParser.parse(fullCommand)
   core.debug(`parsed command: ${args.join(' ')}`)
 
-  return io.which(args[0], true).then(toolPath => {
+  return io.which(args[0], true).then((toolPath) => {
     core.debug(`found command "${toolPath}"`)
     core.debug(`with arguments ${args.slice(1).join(' ')}`)
 
     const toolArguments = args.slice(1)
     const argsString = toolArguments.join(' ')
     core.debug(`running ${quote(toolPath)} ${argsString} in ${cwd}`)
-    core.debug('without waiting for the promise to resolve')
+    core.debug(`waiting for the command to finish? ${waitToFinish}`)
 
     const promise = exec.exec(
       quote(toolPath),
@@ -76,6 +51,7 @@ const execCommand = (
 }
 
 const isWindows = () => os.platform() === 'win32'
+const isUrl = (s) => /^https?:\/\//.test(s)
 
 const homeDirectory = os.homedir()
 const platformAndArch = `${process.platform}-${process.arch}`
@@ -136,27 +112,31 @@ const getNpmCache = () => {
     o.inputPath = NPM_CACHE_FOLDER
   }
 
+  // use exact restore key to prevent NPM cache from growing
+  // https://glebbahmutov.com/blog/do-not-let-npm-cache-snowball/
   o.restoreKeys = o.primaryKey = key
   return o
 }
 
 // custom Cypress binary cache folder
 // see https://on.cypress.io/caching
-const CYPRESS_CACHE_FOLDER = path.join(
-  homeDirectory,
-  '.cache',
-  'Cypress'
-)
+const CYPRESS_CACHE_FOLDER =
+  process.env.CYPRESS_CACHE_FOLDER ||
+  path.join(homeDirectory, '.cache', 'Cypress')
 core.debug(
   `using custom Cypress cache folder "${CYPRESS_CACHE_FOLDER}"`
 )
 
 const getCypressBinaryCache = () => {
   const o = {
-    inputPath: CYPRESS_CACHE_FOLDER,
-    restoreKeys: `cypress-${platformAndArch}-`
+    inputPath: CYPRESS_CACHE_FOLDER
   }
-  o.primaryKey = o.restoreKeys + lockHash()
+  const hash = lockHash()
+  const key = `cypress-${platformAndArch}-${hash}`
+
+  // use only exact restore key to prevent cached folder growing in size
+  // https://glebbahmutov.com/blog/do-not-let-cypress-cache-snowball/
+  o.restoreKeys = o.primaryKey = key
   return o
 }
 
@@ -165,7 +145,7 @@ const restoreCachedNpm = () => {
   const NPM_CACHE = getNpmCache()
   return restoreCache([NPM_CACHE.inputPath], NPM_CACHE.primaryKey, [
     NPM_CACHE.restoreKeys
-  ]).catch(e => {
+  ]).catch((e) => {
     console.warn('Restoring NPM cache error: %s', e.message)
   })
 }
@@ -174,7 +154,7 @@ const saveCachedNpm = () => {
   core.debug('saving NPM modules')
   const NPM_CACHE = getNpmCache()
   return saveCache([NPM_CACHE.inputPath], NPM_CACHE.primaryKey).catch(
-    e => {
+    (e) => {
       console.warn('Saving NPM cache error: %s', e.message)
     }
   )
@@ -187,7 +167,7 @@ const restoreCachedCypressBinary = () => {
     [CYPRESS_BINARY_CACHE.inputPath],
     CYPRESS_BINARY_CACHE.primaryKey,
     [CYPRESS_BINARY_CACHE.restoreKeys]
-  ).catch(e => {
+  ).catch((e) => {
     console.warn('Restoring Cypress cache error: %s', e.message)
   })
 }
@@ -198,7 +178,7 @@ const saveCachedCypressBinary = () => {
   return saveCache(
     [CYPRESS_BINARY_CACHE.inputPath],
     CYPRESS_BINARY_CACHE.primaryKey
-  ).catch(e => {
+  ).catch((e) => {
     console.warn('Saving Cypress cache error: %s', e.message)
   })
 }
@@ -207,13 +187,20 @@ const install = () => {
   // prevent lots of progress messages during install
   core.exportVariable('CI', '1')
   core.exportVariable('CYPRESS_CACHE_FOLDER', CYPRESS_CACHE_FOLDER)
+  // set NPM cache path in case the user has custom install command
+  core.exportVariable('npm_config_cache', NPM_CACHE_FOLDER)
 
   // Note: need to quote found tool to avoid Windows choking on
   // npm paths with spaces like "C:\Program Files\nodejs\npm.cmd ci"
+  const installCommand = core.getInput('install-command')
+  if (installCommand) {
+    core.debug(`using custom install command "${installCommand}"`)
+    return execCommand(installCommand, true, 'install command')
+  }
 
   if (useYarn()) {
     core.debug('installing NPM dependencies using Yarn')
-    return io.which('yarn', true).then(yarnPath => {
+    return io.which('yarn', true).then((yarnPath) => {
       core.debug(`yarn at "${yarnPath}"`)
       return exec.exec(
         quote(yarnPath),
@@ -223,9 +210,8 @@ const install = () => {
     })
   } else {
     core.debug('installing NPM dependencies')
-    core.exportVariable('npm_config_cache', NPM_CACHE_FOLDER)
 
-    return io.which('npm', true).then(npmPath => {
+    return io.which('npm', true).then((npmPath) => {
       core.debug(`npm at "${npmPath}"`)
       return exec.exec(quote(npmPath), ['ci'], cypressCommandOptions)
     })
@@ -237,7 +223,7 @@ const listCypressBinaries = () => {
     `Cypress versions in the cache folder ${CYPRESS_CACHE_FOLDER}`
   )
   core.exportVariable('CYPRESS_CACHE_FOLDER', CYPRESS_CACHE_FOLDER)
-  return io.which('npx', true).then(npxPath => {
+  return io.which('npx', true).then((npxPath) => {
     return exec.exec(
       quote(npxPath),
       ['cypress', 'cache', 'list'],
@@ -251,7 +237,7 @@ const verifyCypressBinary = () => {
     `Verifying Cypress using cache folder ${CYPRESS_CACHE_FOLDER}`
   )
   core.exportVariable('CYPRESS_CACHE_FOLDER', CYPRESS_CACHE_FOLDER)
-  return io.which('npx', true).then(npxPath => {
+  return io.which('npx', true).then((npxPath) => {
     return exec.exec(
       quote(npxPath),
       ['cypress', 'verify'],
@@ -278,6 +264,21 @@ const getInputBool = (name, defaultValue = false) => {
   return defaultValue
 }
 
+/**
+ * Grabs the spec input from the workflow and normalizes
+ * it, since sometimes it can be multiline
+ * @returns {string|undefined}
+ */
+const getSpecsList = () => {
+  const spec = core.getInput('spec')
+  if (!spec) {
+    return
+  }
+  const specLines = spec.split('\n').join(',')
+  core.debug(`extracted spec lines into: "${specLines}"`)
+  return specLines
+}
+
 const buildAppMaybe = () => {
   const buildApp = core.getInput('build')
   if (!buildApp) {
@@ -289,7 +290,7 @@ const buildAppMaybe = () => {
   return execCommand(buildApp, true, 'build app')
 }
 
-const startServerMaybe = () => {
+const startServersMaybe = () => {
   let startCommand
 
   if (isWindows()) {
@@ -301,10 +302,57 @@ const startServerMaybe = () => {
   }
   if (!startCommand) {
     core.debug('No start command found')
-    return
+    return Promise.resolve()
   }
 
-  return execCommand(startCommand, false, 'start server')
+  // allow commands to be separated using commas or newlines
+  const separateStartCommands = startCommand
+    .split(/,|\n/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+  core.debug(
+    `Separated ${
+      separateStartCommands.length
+    } start commands ${separateStartCommands.join(', ')}`
+  )
+
+  return separateStartCommands.map((startCommand) => {
+    return execCommand(
+      startCommand,
+      false,
+      `start server "${startCommand}`
+    )
+  })
+}
+
+/**
+ * Pings give URL(s) until the timeout expires.
+ * @param {string} waitOn A single URL or comma-separated URLs
+ * @param {Number?} waitOnTimeout in seconds
+ */
+const waitOnUrl = (waitOn, waitOnTimeout = 60) => {
+  console.log(
+    'waiting on "%s" with timeout of %s seconds',
+    waitOn,
+    waitOnTimeout
+  )
+
+  const waitTimeoutMs = waitOnTimeout * 1000
+
+  const waitUrls = waitOn
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+  core.debug(`Waiting for urls ${waitUrls.join(', ')}`)
+
+  // run every wait promise after the previous has finished
+  // to avoid "noise" of debug messages
+  return waitUrls.reduce((prevPromise, url) => {
+    return prevPromise.then(() => {
+      core.debug(`Waiting for url ${url}`)
+      return ping(url, waitTimeoutMs)
+    })
+  }, Promise.resolve())
 }
 
 const waitOnMaybe = () => {
@@ -314,19 +362,17 @@ const waitOnMaybe = () => {
   }
 
   const waitOnTimeout = core.getInput('wait-on-timeout') || '60'
+  const timeoutSeconds = parseFloat(waitOnTimeout)
 
-  console.log(
-    'waiting on "%s" with timeout of %s seconds',
-    waitOn,
-    waitOnTimeout
-  )
+  if (isUrl(waitOn)) {
+    return waitOnUrl(waitOn, timeoutSeconds)
+  }
 
-  const waitTimeoutMs = parseFloat(waitOnTimeout) * 1000
-
-  return ping(waitOn, waitTimeoutMs)
+  console.log('Waiting using command "%s"', waitOn)
+  return execCommand(waitOn, true)
 }
 
-const I = x => x
+const I = (x) => x
 
 /**
  * Asks Cypress API if there were already builds for this commit.
@@ -456,7 +502,7 @@ const runTestsUsingCommandLine = async () => {
     cmd.push('--config')
     cmd.push(quoteArgument(configInput))
   }
-  const spec = core.getInput('spec')
+  const spec = getSpecsList()
   if (spec) {
     cmd.push('--spec')
     cmd.push(quoteArgument(spec))
@@ -574,8 +620,9 @@ const runTests = async () => {
     cypressOptions.config = core.getInput('config')
     core.debug(`Cypress config "${cypressOptions.config}"`)
   }
-  if (core.getInput('spec')) {
-    cypressOptions.spec = core.getInput('spec')
+  const spec = getSpecsList()
+  if (spec) {
+    cypressOptions.spec = spec
   }
   if (core.getInput('config-file')) {
     cypressOptions.configFile = core.getInput('config-file')
@@ -606,7 +653,7 @@ const runTests = async () => {
 
   core.debug(`Cypress options ${JSON.stringify(cypressOptions)}`)
 
-  const onTestsFinished = testResults => {
+  const onTestsFinished = (testResults) => {
     process.chdir(startWorkingDirectory)
 
     if (testResults.failures) {
@@ -638,7 +685,7 @@ const runTests = async () => {
     }
   }
 
-  const onTestsError = e => {
+  const onTestsError = (e) => {
     process.chdir(startWorkingDirectory)
 
     console.error(e)
@@ -666,6 +713,7 @@ const installMaybe = () => {
     core.debug(`cypress cache hit ${cypressCacheHit}`)
 
     return install().then(() => {
+      core.debug('install has finished')
       return listCypressBinaries().then(() => {
         if (npmCacheHit && cypressCacheHit) {
           core.debug(
@@ -674,6 +722,7 @@ const installMaybe = () => {
           return Promise.resolve(undefined)
         }
 
+        core.debug('verifying Cypress binary')
         return verifyCypressBinary()
           .then(saveCachedNpm)
           .then(saveCachedCypressBinary)
@@ -684,7 +733,7 @@ const installMaybe = () => {
 
 installMaybe()
   .then(buildAppMaybe)
-  .then(startServerMaybe)
+  .then(startServersMaybe)
   .then(waitOnMaybe)
   .then(runTests)
   .then(() => {
@@ -694,7 +743,7 @@ installMaybe()
     // see https://github.com/actions/toolkit/issues/216
     process.exit(0)
   })
-  .catch(error => {
+  .catch((error) => {
     // final catch - when anything goes wrong, throw an error
     // and exit the action with non-zero code
     core.debug(error.message)

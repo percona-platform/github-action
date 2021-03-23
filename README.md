@@ -1,8 +1,42 @@
-# cypress-io/github-action [![renovate-app badge][renovate-badge]][renovate-app] [![Action status](https://github.com/cypress-io/github-action/workflows/main/badge.svg?branch=master)](https://github.com/cypress-io/github-action/actions) [![renovate-app badge][renovate-badge]][renovate-app]
+# cypress-io/github-action [![renovate-app badge][renovate-badge]][renovate-app] [![Action status](https://github.com/cypress-io/github-action/workflows/main/badge.svg?branch=master)](https://github.com/cypress-io/github-action/actions)
 
 > [GitHub Action](https://help.github.com/en/actions) for running [Cypress](https://www.cypress.io) end-to-end tests. Includes NPM installation, custom caching and lots of configuration options.
 
 ## Examples
+
+- [Basic](#basic)
+- [Explicit version](#explicit-version)
+- Run tests in a given [browser](#browser)
+    * using [Firefox](#firefox)
+    * using [Edge](#edge)
+    * using [headless mode](#headless)
+- Using [Docker image](#docker-image)
+- Specify [environment variables](#env)
+- Run only some [spec files](#specs)
+- Test [project in subfolder](#project)
+- [Record results](#record-test-results-on-cypress-dashboard) on Cypress Dashboard
+- Tag [recordings](#tag-recordings)
+- [Quiet output](#quiet-flag)
+- Store [test artifacts](#artifacts) on GitHub
+- Set Cypress [config values](#config)
+- Use specific [config file](#config-file)
+- Run tests in [parallel](#parallel)
+- [Build app](#build-app) before running the tests
+- [Start server](#start-server) before running the tests
+- [Start multiple servers](#start-multiple-servers) before running the tests
+- [Wait for server](#wait-on) to respond before running the tests
+- use [custom install command](#custom-install-command)
+- use [command prefix](#command-prefix)
+- use [own custom test command](#custom-test-command)
+- pass [custom build id](#custom-build-id) when recording to Dashboard
+- use different [working-directory](#working-directory)
+- use [custom cache key](#custom-cache-key)
+- run tests on multiple [Node versions](#node-versions)
+- split [install and tests](#split-install-and-tests) into separate jobs
+- use [custom install commands](#custom-install)
+- install [only Cypress](#install-cypress-only) to avoid installing all dependencies
+- [timeouts](#timeouts) to avoid hanging CI jobs
+- [more examples](#more-examples)
 
 ### Basic
 
@@ -14,7 +48,7 @@ jobs:
     runs-on: ubuntu-16.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v2
       # Install NPM dependencies, cache them correctly
       # and run all Cypress tests
       - name: Cypress run
@@ -22,6 +56,10 @@ jobs:
 ```
 
 [![Basic example](https://github.com/cypress-io/github-action/workflows/example-basic/badge.svg?branch=master)](.github/workflows/example-basic.yml)
+
+The workflow file [.github/workflows/example-basic.yml](.github/workflows/example-basic.yml) shows how Cypress runs on GH Actions using Ubuntu (16, 18, or 20), on Windows, and on Mac without additional OS dependencies necessary.
+
+**Note:** this package assumes that `cypress` is declared as a development dependency in the `package.json` file. The `cypress` NPM module is required to run Cypress via its [NPM module API](https://on.cypress.io/module-api).
 
 ### Explicit version
 
@@ -56,13 +94,56 @@ jobs:
     # let's make sure our tests pass on Chrome browser
     name: E2E on Chrome
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v2
       - uses: cypress-io/github-action@v2
         with:
           browser: chrome
 ```
 
 [![Chrome example](https://github.com/cypress-io/github-action/workflows/example-chrome/badge.svg?branch=master)](.github/workflows/example-chrome.yml)
+
+### Firefox
+
+In order to run Firefox, you need to use non-root user (Firefox security restriction).
+
+```yml
+name: Firefox
+on: push
+jobs:
+  firefox:
+    runs-on: ubuntu-latest
+    container:
+      image: cypress/browsers:node12.16.1-chrome80-ff73
+      options: --user 1001
+    steps:
+      - uses: actions/checkout@v2
+      - uses: cypress-io/github-action@v2
+        with:
+          browser: firefox
+```
+
+[![Firefox example](https://github.com/cypress-io/github-action/workflows/example-firefox/badge.svg?branch=master)](.github/workflows/example-firefox.yml)
+
+**Note:** the magical user id `1001` works because it matches permissions settings on the home folder, see issue [#104](https://github.com/cypress-io/github-action/issues/104)
+
+### Edge
+
+```yml
+name: Edge
+on: push
+jobs:
+  tests:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: cypress-io/github-action@v2
+        with:
+          browser: edge
+```
+
+[![Edge example](https://github.com/cypress-io/github-action/workflows/example-edge/badge.svg?branch=master)](.github/workflows/example-edge.yml)
+
+**Note:** Microsoft has not released Edge for Linux yet, thus you need to run these tests on Windows or Mac runners with Edge preinstalled. You can use [`cypress info`](https://on.cypress.io/command-line#cypress-info) command to see the browsers installed on the machine.
 
 ### Headless
 
@@ -75,7 +156,7 @@ jobs:
   cypress-run:
     runs-on: ubuntu-16.04
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v2
       - uses: cypress-io/github-action@v2
         with:
           browser: chrome
@@ -96,54 +177,11 @@ jobs:
     # and Firefox v70 pre-installed
     container: cypress/browsers:node12.13.0-chrome78-ff70
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v2
       - uses: cypress-io/github-action@v2
         with:
           browser: chrome
 ```
-
-### Firefox
-
-In order to run Firefox, you need to use non-root user (Firefox security restriction).
-
-```yml
-name: Firefox
-on: push
-jobs:
-  firefox:
-    runs-on: ubuntu-latest
-    container:
-      image: cypress/browsers:node12.16.1-chrome80-ff73
-      options: --user 1001
-    steps:
-      - uses: actions/checkout@v1
-      - uses: cypress-io/github-action@v2
-        with:
-          browser: firefox
-```
-
-[![Firefox example](https://github.com/cypress-io/github-action/workflows/example-firefox/badge.svg?branch=master)](.github/workflows/example-firefox.yml)
-
-**Note:** the magical user id `1001` works because it matches permissions settings on the home folder, see issue [#104](https://github.com/cypress-io/github-action/issues/104)
-
-### Edge
-
-```yml
-name: Edge
-on: push
-jobs:
-  tests:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v1
-      - uses: cypress-io/github-action@v2
-        with:
-          browser: edge
-```
-
-[![Edge example](https://github.com/cypress-io/github-action/workflows/example-edge/badge.svg?branch=master)](.github/workflows/example-edge.yml)
-
-**Note:** Microsoft has not released Edge for Linux yet, thus you need to run these tests on Windows or Mac runners with Edge preinstalled. You can use [`cypress info`](https://on.cypress.io/command-line#cypress-info) command to see the browsers installed on the machine.
 
 ### Env
 
@@ -157,13 +195,34 @@ jobs:
     runs-on: ubuntu-16.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v2
 
       - name: Cypress run with env
         uses: cypress-io/github-action@v2
         with:
           env: host=api.dev.local,port=4222
 ```
+
+When passing the environment variables this way, unfortunately due to GitHub Actions syntax, the variables should be listed in a single line, which can be hard to read. As an alternative, you can use the step's `env` block where every variable can be set on its own line. In this case, you should prefix every variable with `CYPRESS_` because such variables [are loaded by Cypress automatically](https://on.cypress.io/environment-variables). The above code example is equivalent to:
+
+```yml
+name: Cypress tests
+on: [push]
+jobs:
+  cypress-run:
+    runs-on: ubuntu-16.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Cypress run with env
+        uses: cypress-io/github-action@v2
+        env:
+          CYPRESS_host: api.dev.local
+          CYPRESS_port: 4222
+```
+
+For more examples, see the workflow example below.
 
 [![Env example](https://github.com/cypress-io/github-action/workflows/example-env/badge.svg?branch=master)](.github/workflows/example-env.yml)
 
@@ -180,12 +239,20 @@ jobs:
     runs-on: ubuntu-16.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v2
 
       - name: Cypress run
         uses: cypress-io/github-action@v2
         with:
           spec: cypress/integration/spec1.js
+```
+
+You can pass multiple multiple specs and wild card patterns using multi-line parameter, see [example-config.yml](./.github/workflows/example-config.yml):
+
+```yml
+spec: |
+  cypress/integration/spec-a.js
+  cypress/**/*-b.js
 ```
 
 For more information, visit [the Cypress command-line docs](https://on.cypress.io/command-line#cypress-run-env-lt-env-gt).
@@ -203,7 +270,7 @@ jobs:
     runs-on: ubuntu-16.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v2
       - name: Cypress run
         uses: cypress-io/github-action@v2
         with:
@@ -223,7 +290,7 @@ jobs:
     runs-on: ubuntu-16.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v2
 
       - name: Cypress run
         uses: cypress-io/github-action@v2
@@ -256,7 +323,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v2
       # Install NPM dependencies, cache them correctly
       # and run all Cypress tests with `quiet` parameter
       - name: Cypress run
@@ -291,7 +358,7 @@ jobs:
       - run: node -v
 
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v2
 
       - name: Cypress run
         uses: cypress-io/github-action@v2
@@ -321,7 +388,7 @@ jobs:
     runs-on: ubuntu-16.04
     name: Artifacts
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v2
       - uses: cypress-io/github-action@v2
       # after the test run completes
       # store videos and any screenshots
@@ -355,7 +422,7 @@ jobs:
     runs-on: ubuntu-16.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v2
 
       - name: Cypress run
         uses: cypress-io/github-action@v2
@@ -378,7 +445,7 @@ jobs:
     runs-on: ubuntu-16.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v2
 
       - name: Cypress run
         uses: cypress-io/github-action@v2
@@ -387,6 +454,8 @@ jobs:
 ```
 
 ### Parallel
+
+**Note:** Cypress parallelization requires [Cypress Dashboard](https://on.cypress.io/dashboard-introduction) account.
 
 You can spin multiple containers running in parallel using `strategy: matrix` argument. Just add more dummy items to the `containers: [1, 2, ...]` array to spin more free or paid containers. Then use `record` and `parallel` parameters to [load balance tests](https://on.cypress.io/parallelization)
 
@@ -410,7 +479,7 @@ jobs:
         containers: [1, 2, 3]
     steps:
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v2
 
       # because of "record" and "parallel" parameters
       # these containers will load balance all found tests among themselves
@@ -444,7 +513,7 @@ jobs:
     runs-on: ubuntu-16.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v2
       - name: Cypress run
         uses: cypress-io/github-action@v2
         with:
@@ -463,7 +532,7 @@ jobs:
     runs-on: ubuntu-16.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v2
       - name: Cypress run
         uses: cypress-io/github-action@v2
         with:
@@ -480,7 +549,7 @@ jobs:
     runs-on: ubuntu-16.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v2
       - name: Cypress run
         uses: cypress-io/github-action@v2
         with:
@@ -488,6 +557,38 @@ jobs:
           start: npm start
           # Takes precedences on Windows
           start-windows: npm run start:windows:server
+```
+
+[![start example](https://github.com/cypress-io/github-action/workflows/example-start/badge.svg?branch=master)](.github/workflows/example-start.yml)
+
+**Note:** GitHub cleans up the running server processes automatically. This action does not stop them.
+
+### Start multiple servers
+
+You can start multiple server processes. For example, if you have an API to start using `npm run api` and the web server to start using `npm run web` you can put those commands in `start` using comma separation.
+
+```yml
+name: With servers
+on: [push]
+jobs:
+  cypress-run:
+    runs-on: ubuntu-18.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Cypress run
+        uses: cypress-io/github-action@v2
+        with:
+          start: npm run api, npm run web
+```
+
+You can place the start commands in separate lines
+
+```yml
+with:
+  start: |
+    npm run api
+    npm run web
 ```
 
 [![start example](https://github.com/cypress-io/github-action/workflows/example-start/badge.svg?branch=master)](.github/workflows/example-start.yml)
@@ -504,7 +605,7 @@ jobs:
     runs-on: ubuntu-16.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v2
       - name: Cypress run
         uses: cypress-io/github-action@v2
         with:
@@ -512,6 +613,8 @@ jobs:
           # quote the url to be safe against YML parsing surprises
           wait-on: 'http://localhost:8080'
 ```
+
+[![wait-on example](https://github.com/cypress-io/github-action/workflows/example-wait-on/badge.svg?branch=master)](.github/workflows/example-wait-on.yml)
 
 By default, `wait-on` will retry for 60 seconds. You can pass a custom timeout in seconds using `wait-on-timeout`.
 
@@ -523,6 +626,47 @@ By default, `wait-on` will retry for 60 seconds. You can pass a custom timeout i
     # wait for 2 minutes for the server to respond
     wait-on-timeout: 120
 ```
+
+See also [![Webpack Dev Server example](https://github.com/cypress-io/github-action/workflows/example-webpack/badge.svg?branch=master)](.github/workflows/example-webpack.yml)
+
+You can wait for multiple URLs to respond by separating urls with a comma
+
+```yml
+- uses: cypress-io/github-action@v2
+  with:
+    # API runs on port 3050
+    # Web server runs on port 8080
+    start: npm run api, npm run web
+    # wait for all services to respond
+    wait-on: 'http://localhost:3050, http://localhost:8080'
+```
+
+The action will wait for the first url to respond, then will check the second url, and so on.
+
+You can even use your own command (usually by using `npm`, `yarn`, `npx`) to wait for the server to respond. For example, if you want to use [wait-on](https://github.com/jeffbski/wait-on) utility to ping the server and run the Cypress tests after the server responds:
+
+```yml
+- uses: cypress-io/github-action@v2
+  with:
+    start: npm start
+    wait-on: 'npx wait-on --timeout 5000 http://localhost:3000'
+```
+
+See [example-wait-on.yml](.github/workflows/example-wait-on.yml) workflow file.
+
+If this action times out waiting for the server to respond, please see [Debugging](#debugging) section in this README file.
+
+### Custom install command
+
+If you want to overwrite the install command
+
+```yml
+- uses: cypress-io/github-action@v2
+  with:
+    install-command: yarn --frozen-lockfile --silent
+```
+
+See [example-install-command.yml](.github/workflows/example-install-command.yml) workflow file.
 
 ### Command prefix
 
@@ -536,7 +680,7 @@ jobs:
     runs-on: ubuntu-16.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v2
       - name: Cypress run
         uses: cypress-io/github-action@v2
         with:
@@ -557,7 +701,7 @@ You can overwrite the Cypress run command with your own
 ```yml
 steps:
   - name: Checkout 🛎
-    uses: actions/checkout@v1
+    uses: actions/checkout@v2
 
   - name: Custom tests 🧪
     uses: cypress-io/github-action@v1
@@ -582,7 +726,7 @@ jobs:
         # run 3 copies of the current job in parallel
         containers: [1, 2, 3]
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v2
       - uses: cypress-io/github-action@v2
         with:
           record: true
@@ -618,7 +762,7 @@ jobs:
   cypress-run:
     runs-on: ubuntu-16.04
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v2
       - uses: cypress-io/github-action@v2
         with:
           start: npm start
@@ -684,7 +828,7 @@ jobs:
     # and tests in a subfolder like "workspace-1"
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v2
       - uses: cypress-io/github-action@v2
         with:
           working-directory: examples/start-and-yarn-workspaces/workspace-1
@@ -716,7 +860,7 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v2
       # run Cypress tests and record them under the same run
       # associated with commit SHA and just give a different group name
       - name: Cypress run
@@ -748,7 +892,7 @@ jobs:
       - uses: actions/setup-node@v1
         with:
           node-version: ${{ matrix.node }}
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v2
       - uses: cypress-io/github-action@v2
 ```
 
@@ -789,17 +933,63 @@ See [cypress-gh-action-monorepo](https://github.com/bahmutov/cypress-gh-action-m
 
 Finally, you might not need this GH Action at all. For example, if you want to split the NPM dependencies installation from the Cypress binary installation, then it makes no sense to use this action. Instead you can install and cache Cypress yourself. See [cypress-gh-action-split-install](https://github.com/bahmutov/cypress-gh-action-split-install) for working example.
 
+### Install Cypress only
+
+If the project has many dependencies, but you want to install just Cypress you can combine this action with `actions/cache` and `npm i cypress` commands yourself.
+
+```yml
+- uses: actions/checkout@v2
+- uses: actions/cache@v2
+  with:
+    path: |
+      ~/.cache/Cypress
+      node_modules
+    key: my-cache-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+- run: npm i cypress
+- uses: cypress-io/github-action@v2
+  with:
+    install: false
+```
+
+See [.github/workflows/example-install-only.yml](.github/workflows/example-install-only.yml) file.
+
+[![Install only Cypress example](https://github.com/cypress-io/github-action/workflows/example-install-only/badge.svg?branch=master)](.github/workflows/example-install-only.yml)
+
+### Timeouts
+
+You can tell the CI to stop the job or the individual step if it runs for longer then a given time limit. This is a good practice to ensure the hanging process does not accidentally use up all your CI minutes.
+
+```yml
+jobs:
+  cypress-run:
+    runs-on: ubuntu-20.04
+    # stop the job if it runs over 10 minutes
+    # to prevent a hanging process from using all your CI minutes
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v2
+      - uses: cypress-io/github-action@v2
+        # you can specify individual step timeout too
+        timeout-minutes: 5
+```
+
+See [cypress-gh-action-example](https://github.com/bahmutov/cypress-gh-action-example)
+
 ### More examples
 
 <!-- prettier-ignore-start -->
 Name | Description
 --- | ---
-[cypress-gh-action-example](https://github.com/bahmutov/cypress-gh-action-example) | uses Yarn, and runs in parallel on several versions of Node, also different browsers
+[cypress-gh-action-example](https://github.com/bahmutov/cypress-gh-action-example) | uses Yarn, and runs in parallel on several versions of Node, different browsers, and more.
 [cypress-gh-action-monorepo](https://github.com/bahmutov/cypress-gh-action-monorepo) | splits install and running tests commands, runs Cypress from sub-folder
 [cypress-gh-action-subfolders](https://github.com/bahmutov/cypress-gh-action-subfolders) | separate folder for Cypress dependencies
 [cypress-gh-action-split-install](https://github.com/bahmutov/cypress-gh-action-split-install) | only install NPM dependencies, then install and cache Cypress binary yourself
 [cypress-gh-action-vue-example](https://github.com/cypress-io/cypress-gh-action-vue-example) | project was scaffolded using Vue CLI
 [gh-action-and-gh-integration](https://github.com/cypress-io/gh-action-and-gh-integration) | records to the dashboard and has [Cypress GH Integration](https://on.cypress.io/github-integration) app installed
+[test-personal-site](https://github.com/bahmutov/test-personal-site) | Testing an external website every night and by manually clicking a button.
+[cypress-gh-action-changed-files](https://github.com/bahmutov/cypress-gh-action-changed-files) | Shows how to run different Cypress projects depending on changed files
+[cypress-examples](https://github.com/bahmutov/cypress-examples) | Shows separate install job from parallel test jobs
+[cypress-gh-action-split-jobs](https://github.com/bahmutov/cypress-gh-action-split-jobs) | Shows a separate install job with the build step, and another job that runs the tests
 <!-- prettier-ignore-end -->
 
 ## Notes
@@ -808,7 +998,9 @@ Name | Description
 
 This action installs local dependencies using lock files. If `yarn.lock` file is found, the install uses `yarn --frozen-lockfile` command. Otherwise it expects to find `package-lock.json` and install using `npm ci` command.
 
-### Debugging
+This action uses several production dependencies. The minimum Node version required to run this action depends on the minimum Node required by the dependencies.
+
+## Debugging
 
 You can see verbose messages from GitHub Actions by setting the following secrets (from [Debugging Actions Guide](https://github.com/actions/toolkit/blob/master/docs/action-debugging.md#step-debug-logs))
 
@@ -819,6 +1011,38 @@ ACTIONS_STEP_DEBUG: true
 
 The `ACTIONS_RUNNER_DEBUG` will show generic Actions messages, while `ACTIONS_STEP_DEBUG` will enable the `core.debug(...)` messages from this actions.
 
+### Logs from the test runner
+
+The above `ACTIONS_STEP_DEBUG` setting enables the debug logs from the action itself. To see the [Cypress debug logs](http://on.cypress.io/troubleshooting#Print-DEBUG-logs) add an environment variable to the action:
+
+```yml
+- name: Cypress tests with debug logs
+  uses: cypress-io/github-action@v2
+  env:
+    DEBUG: 'cypress:*'
+```
+
+### Debugging waiting for URL to respond
+
+If you have a problem with `wait-on` not working, you can check the [src/ping.js](src/ping.js) logic from the local machine.
+
+- clone this repository to the local machine
+- install dependencies with `npm install`
+- start your server
+- from another terminal call the `ping` yourself to validate the server is responding:
+
+```
+$ node src/ping-cli.js <url>
+```
+
+For example
+
+```
+$ node src/ping.js https://example.cypress.io
+pinging url https://example.cypress.io for 30 seconds
+::debug::pinging https://example.cypress.io has finished ok
+```
+
 ## Development
 
 Read [DEVELOPMENT.md](DEVELOPMENT.md)
@@ -826,9 +1050,14 @@ Read [DEVELOPMENT.md](DEVELOPMENT.md)
 ## More information
 
 - Read our blog post [Drastically Simplify Testing on CI with Cypress GitHub Action](https://www.cypress.io/blog/2019/11/20/drastically-simplify-your-testing-with-cypress-github-action/)
+- Read [Test the Preview Vercel Deploys](https://glebbahmutov.com/blog/develop-preview-test/) blog post
 - [Building actions](https://help.github.com/en/actions/automating-your-workflow-with-github-actions/building-actions) docs
 
 ## Extras
+
+### Manual trigger
+
+If you add `workflow_dispatch` event to your workflow, you will be able to start the workflow by clicking a button on the GitHub page, see the [Test External Site Using GitHub Actions](https://www.youtube.com/watch?v=4TeSOj2Iy_Q) video.
 
 ### Outputs
 
@@ -869,7 +1098,7 @@ jobs:
     # https://github.com/cypress-io/cypress-docker-images/tree/master/included
     container: cypress/included:3.8.3
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v2
       - run: cypress run
 ```
 

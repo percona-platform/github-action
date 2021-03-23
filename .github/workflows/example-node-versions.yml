@@ -2,7 +2,7 @@ name: example-node-versions
 on: [push]
 jobs:
   cypress-run:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     # let's make sure Cypress works on several versions of Node
     strategy:
       matrix:
@@ -17,7 +17,7 @@ jobs:
       - run: npm -v
 
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v2
 
       # Hmm, should we rebuild the "dist" before using the action?
 
